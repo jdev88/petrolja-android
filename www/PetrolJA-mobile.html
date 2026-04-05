@@ -1,0 +1,989 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="PetrolJA">
+<meta name="theme-color" content="#0c0c0c">
+<title>PetrolJA</title>
+
+<!-- PWA Manifest (inline) -->
+<link rel="manifest" href="/manifest.json">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<style>
+/* ── Reset ── */
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body {
+  height: 100%; width: 100%; overflow: hidden;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 15px; background: #0c0c0c; color: #e0e0e0;
+  overscroll-behavior: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ── Tokens ── */
+:root {
+  --bg:     #0c0c0c;
+  --panel:  #161616;
+  --raised: #202020;
+  --hover:  #282828;
+  --line:   #2e2e2e;
+  --line2:  #3a3a3a;
+  --txt:    #e0e0e0;
+  --sub:    #777;
+  --dim:    #444;
+  --white:  #fff;
+  --green:  #4ade80;
+  --red:    #f87171;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bot: env(safe-area-inset-bottom, 0px);
+}
+
+/* ── Map fills entire screen ── */
+#map {
+  position: fixed; inset: 0;
+  width: 100%; height: 100%;
+  z-index: 1;
+}
+.leaflet-popup-content-wrapper {
+  background: rgba(16,16,16,0.97) !important;
+  border: 1px solid #383838 !important; border-radius: 12px !important;
+  color: var(--txt) !important; box-shadow: 0 16px 40px rgba(0,0,0,0.7) !important;
+}
+.leaflet-popup-tip-container { display: none !important; }
+.leaflet-popup-content { margin: 14px 16px !important; min-width: 180px; }
+.leaflet-control-attribution { display: none !important; }
+.leaflet-control-zoom { display: none !important; }
+.pu-name { font-weight: 800; font-size: 0.9rem; color: var(--white); margin-bottom: 3px; }
+.pu-addr { font-size: 0.72rem; color: var(--sub); margin-bottom: 8px; line-height: 1.4; }
+.pu-price { font-family: 'Geist Mono', monospace; font-weight: 700; font-size: 1.1rem; color: var(--white); }
+.pu-row { display: flex; justify-content: space-between; align-items: center; margin-top: 4px; }
+.pu-src, .pu-dist { font-size: 0.65rem; color: var(--sub); }
+
+/* ── Top bar (floating) ── */
+.topbar {
+  position: fixed; top: 0; left: 0; right: 0;
+  z-index: 100;
+  padding: calc(var(--safe-top) + 10px) 14px 10px;
+  display: flex; align-items: center; gap: 10px;
+  background: linear-gradient(to bottom, rgba(12,12,12,0.95) 0%, rgba(12,12,12,0) 100%);
+  pointer-events: none;
+}
+.topbar > * { pointer-events: all; }
+
+.logo {
+  font-family: 'Geist Mono', monospace; font-weight: 700; font-size: 1rem;
+  letter-spacing: 0.5px; display: flex; align-items: center; gap: 7px;
+  background: rgba(12,12,12,0.85); border: 1px solid var(--line2);
+  padding: 7px 12px; border-radius: 24px;
+  backdrop-filter: blur(12px);
+}
+.logo-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--white); flex-shrink: 0; }
+
+.fuel-group {
+  display: flex; gap: 2px;
+  background: rgba(20,20,20,0.9); border: 1px solid var(--line2);
+  border-radius: 24px; padding: 3px;
+  backdrop-filter: blur(12px);
+}
+.fpill {
+  padding: 5px 12px; border-radius: 20px; border: none;
+  background: transparent; color: var(--sub);
+  font-family: inherit; font-weight: 700; font-size: 0.75rem;
+  cursor: pointer; transition: all 0.15s;
+}
+.fpill.on { background: var(--line2); color: var(--white); }
+
+/* ── FAB: Find Nearby ── */
+.fab {
+  position: fixed;
+  bottom: calc(var(--safe-bot) + 28px);
+  right: 18px;
+  z-index: 100;
+  display: flex; align-items: center; gap: 8px;
+  height: 50px; padding: 0 20px;
+  background: var(--white); color: #000;
+  border: none; border-radius: 25px;
+  font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800; font-size: 0.88rem;
+  cursor: pointer; box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+  transition: background 0.15s, transform 0.15s;
+  -webkit-user-select: none; user-select: none;
+}
+.fab:active { transform: scale(0.96); }
+.fab:disabled { opacity: 0.4; }
+.fab.loading svg { animation: spin 1s linear infinite; }
+
+/* ── Bottom sheet ── */
+.sheet {
+  position: fixed;
+  left: 0; right: 0;
+  bottom: 0;
+  z-index: 200;
+  background: var(--panel);
+  border-radius: 20px 20px 0 0;
+  border-top: 1px solid var(--line2);
+  box-shadow: 0 -8px 40px rgba(0,0,0,0.6);
+  transition: transform 0.35s cubic-bezier(0.32, 0.72, 0, 1);
+  will-change: transform;
+  display: flex; flex-direction: column;
+  /* height is set by JS snap points */
+  max-height: 90vh;
+}
+
+.sheet-handle-area {
+  flex-shrink: 0;
+  padding: 12px 0 4px;
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
+  cursor: grab;
+  touch-action: none;
+}
+.sheet-handle-area:active { cursor: grabbing; }
+
+.handle {
+  width: 40px; height: 4px;
+  background: var(--line2); border-radius: 2px;
+}
+
+.sheet-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 16px 10px;
+  flex-shrink: 0;
+}
+.sheet-title { font-weight: 800; font-size: 1rem; color: var(--white); }
+.sheet-sub { font-size: 0.72rem; color: var(--sub); }
+
+/* PCJ strip */
+.pcj-strip {
+  display: grid; grid-template-columns: repeat(3,1fr);
+  border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
+  flex-shrink: 0;
+}
+.pcj-cell { padding: 9px 12px; border-right: 1px solid var(--line); }
+.pcj-cell:last-child { border-right: none; }
+.pcj-lbl { font-size: 0.58rem; text-transform: uppercase; letter-spacing: 0.9px; color: var(--dim); margin-bottom: 2px; }
+.pcj-num { font-family: 'Geist Mono', monospace; font-weight: 700; font-size: 0.9rem; color: var(--txt); }
+
+/* Radius row */
+.radius-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 16px; border-bottom: 1px solid var(--line); flex-shrink: 0;
+}
+.radius-row label { font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--sub); white-space: nowrap; }
+input[type=range] {
+  flex: 1; height: 2px; appearance: none; -webkit-appearance: none;
+  background: var(--raised); border-radius: 2px; outline: none; cursor: pointer;
+}
+input[type=range]::-webkit-slider-thumb {
+  appearance: none; -webkit-appearance: none;
+  width: 18px; height: 18px; border-radius: 50%; background: var(--white); border: 2px solid var(--bg);
+}
+#rvLabel { font-family: 'Geist Mono', monospace; font-weight: 700; font-size: 0.85rem; color: var(--txt); min-width: 40px; text-align: right; }
+
+/* Station list */
+.slist {
+  flex: 1; min-height: 0;
+  overflow-y: auto; overflow-x: hidden;
+  padding: 8px 12px;
+  display: flex; flex-direction: column; gap: 4px;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+.slist::-webkit-scrollbar { display: none; }
+
+/* ── Station card ── */
+.card {
+  position: relative;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: transparent;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+  -webkit-user-select: none; user-select: none;
+}
+.card::after {
+  content: '';
+  position: absolute; left: 0; top: 8px; bottom: 8px;
+  width: 3px; border-radius: 0 2px 2px 0; background: var(--line);
+  pointer-events: none;
+}
+.card.cheapest::after { background: var(--green); box-shadow: 0 0 8px rgba(74,222,128,0.4); }
+.card.priciest::after  { background: var(--red); }
+.card:active:not(.open) { background: var(--hover); }
+.card.open { border-color: var(--white); background: var(--raised); }
+
+/* Collapsed row */
+.c-row {
+  display: flex; align-items: center;
+  padding: 12px 12px 12px 16px; gap: 8px;
+}
+.c-num {
+  font-family: 'Geist Mono', monospace; font-size: 0.68rem; color: var(--dim);
+  flex-shrink: 0; width: 18px; text-align: right;
+}
+.c-name {
+  font-weight: 700; font-size: 0.95rem; color: var(--white);
+  flex: 1; min-width: 0;
+  white-space: normal;
+  overflow: visible;
+  line-height: 1.3;
+}
+.c-right { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.c-price-chip {
+  font-family: 'Geist Mono', monospace; font-weight: 700; font-size: 0.78rem;
+  color: var(--txt); white-space: nowrap;
+}
+.c-dist { font-size: 0.68rem; color: var(--sub); white-space: nowrap; }
+.badge {
+  font-size: 0.56rem; font-weight: 800; text-transform: uppercase;
+  letter-spacing: 0.4px; padding: 2px 7px; border-radius: 20px; flex-shrink: 0;
+}
+.badge-g { background: rgba(74,222,128,0.1); color: var(--green); border: 1px solid rgba(74,222,128,0.2); }
+.badge-r { background: rgba(248,113,113,0.1); color: var(--red); border: 1px solid rgba(248,113,113,0.2); }
+
+/* Expanded detail */
+.c-detail {
+  display: none;
+  padding: 0 14px 14px 16px;
+  border-top: 1px solid var(--line);
+}
+.card.open .c-detail { display: block; }
+
+.c-addr { font-size: 0.78rem; color: var(--sub); line-height: 1.5; margin: 10px 0 12px; word-break: break-word; }
+
+.c-price-row { display: flex; align-items: flex-end; justify-content: space-between; margin-bottom: 12px; }
+.c-price-lbl { font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.8px; color: var(--dim); margin-bottom: 2px; }
+.c-price-num {
+  font-family: 'Geist Mono', monospace; font-weight: 700; font-size: 1.6rem;
+  color: var(--white); line-height: 1;
+}
+.c-price-unit { font-size: 0.56rem; color: var(--sub); font-family: inherit; vertical-align: super; }
+.c-price-src {
+  display: inline-block; margin-top: 4px;
+  font-size: 0.58rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px;
+  padding: 2px 6px; border-radius: 4px;
+}
+.src-off { background: rgba(255,255,255,0.05); color: var(--dim); }
+.src-com { background: rgba(74,222,128,0.1); color: var(--green); }
+
+/* Action buttons */
+.c-actions { display: flex; flex-direction: column; gap: 8px; }
+
+.btn-nav {
+  display: flex; align-items: center; justify-content: center; gap: 9px;
+  width: 100%; padding: 15px; border-radius: 10px;
+  background: var(--white); color: #000;
+  font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800; font-size: 0.92rem;
+  text-decoration: none; border: none; cursor: pointer;
+  -webkit-user-select: none; user-select: none;
+  box-shadow: 0 2px 12px rgba(255,255,255,0.1);
+  transition: background 0.15s;
+}
+.btn-nav:active { background: #ddd; }
+
+.btn-rpt {
+  display: flex; align-items: center; justify-content: center; gap: 7px;
+  width: 100%; padding: 12px; border-radius: 10px;
+  background: transparent; color: var(--sub);
+  font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 600; font-size: 0.84rem;
+  border: 1px solid var(--line2); cursor: pointer;
+  transition: all 0.15s;
+}
+.btn-rpt:active { border-color: var(--txt); color: var(--white); }
+
+.c-reports { font-size: 0.62rem; color: var(--dim); margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--line); }
+
+/* Empty / loading */
+.empty {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  min-height: 160px; text-align: center; padding: 24px; gap: 8px;
+}
+.empty-ico { font-size: 2rem; margin-bottom: 4px; }
+.empty h3 { font-size: 0.95rem; font-weight: 800; color: var(--txt); }
+.empty p { font-size: 0.8rem; color: var(--sub); line-height: 1.6; max-width: 240px; }
+
+/* ── Modal ── */
+.overlay {
+  display: none; position: fixed; inset: 0; z-index: 900;
+  background: rgba(0,0,0,0.8); align-items: flex-end; justify-content: center;
+  backdrop-filter: blur(6px);
+}
+.overlay.open { display: flex; }
+.modal {
+  background: var(--panel); border: 1px solid var(--line2);
+  border-radius: 20px 20px 0 0;
+  padding: 24px 20px calc(24px + var(--safe-bot));
+  width: 100%; max-width: 480px;
+  animation: slideUp 0.25s cubic-bezier(0.32, 0.72, 0, 1);
+}
+@keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+.modal h3 { font-weight: 800; font-size: 1.05rem; margin-bottom: 2px; }
+.msub { font-size: 0.8rem; color: var(--sub); margin-bottom: 18px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.flbl { display: block; font-size: 0.65rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: var(--sub); margin-bottom: 6px; }
+select, input[type=number] {
+  width: 100%; background: var(--bg); border: 1px solid var(--line2);
+  border-radius: 10px; padding: 14px 13px; color: var(--txt);
+  font-family: inherit; font-size: 1rem; outline: none; margin-bottom: 14px;
+  appearance: none; -webkit-appearance: none;
+  transition: border-color 0.15s;
+}
+select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23666' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 14px center; padding-right: 38px;
+}
+select option { background: var(--panel); }
+select:focus, input:focus { border-color: var(--white); }
+.modal-btns { display: flex; gap: 8px; margin-top: 4px; }
+.btn-submit {
+  flex: 1; height: 50px; background: var(--white); color: #000;
+  border: none; border-radius: 10px; font-family: inherit; font-weight: 800; font-size: 0.95rem;
+  cursor: pointer;
+}
+.btn-submit:active { background: #ddd; }
+.btn-cancel {
+  height: 50px; padding: 0 20px; background: transparent;
+  border: 1px solid var(--line2); border-radius: 10px; color: var(--sub);
+  font-family: inherit; font-size: 0.95rem; cursor: pointer;
+}
+.btn-cancel:active { border-color: var(--sub); color: var(--txt); }
+
+/* ── Toast ── */
+.toast {
+  position: fixed; bottom: calc(var(--safe-bot) + 84px); left: 50%;
+  transform: translateX(-50%) translateY(20px);
+  background: var(--raised); border: 1px solid var(--line2); color: var(--txt);
+  padding: 10px 18px; border-radius: 24px; font-size: 0.82rem; font-weight: 600;
+  display: flex; align-items: center; gap: 8px; z-index: 9999;
+  opacity: 0; transition: opacity 0.3s, transform 0.3s;
+  pointer-events: none; white-space: nowrap;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+}
+.toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+.tdot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+
+@keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<!-- Full-screen map -->
+<div id="map"></div>
+
+<!-- Floating top bar -->
+<div class="topbar">
+  <div class="logo"><div class="logo-dot"></div>PetrolJA</div>
+  <div class="fuel-group">
+    <button class="fpill on" data-f="87">87</button>
+    <button class="fpill" data-f="90">90</button>
+    <button class="fpill" data-f="diesel">Diesel</button>
+  </div>
+</div>
+
+<!-- FAB -->
+<button class="fab" id="fab">
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="3"/><path d="M12 2v3m0 14v3M2 12h3m14 0h3"/></svg>
+  Find Nearby
+</button>
+
+<!-- Bottom sheet -->
+<div class="sheet" id="sheet">
+
+  <!-- Drag handle -->
+  <div class="sheet-handle-area" id="sheetHandle">
+    <div class="handle"></div>
+    <div class="sheet-header">
+      <span class="sheet-title" id="countLbl">PetrolJA</span>
+      <span class="sheet-sub" id="sheetSub">tap to expand</span>
+    </div>
+  </div>
+
+  <!-- PCJ rates -->
+  <div class="pcj-strip">
+    <div class="pcj-cell"><div class="pcj-lbl">87 Oct</div><div class="pcj-num">$191.49</div></div>
+    <div class="pcj-cell"><div class="pcj-lbl">90 Oct</div><div class="pcj-num">$202.95</div></div>
+    <div class="pcj-cell"><div class="pcj-lbl">Diesel</div><div class="pcj-num">$177.22</div></div>
+  </div>
+
+  <!-- Radius -->
+  <div class="radius-row">
+    <label for="rSlider">Radius</label>
+    <input type="range" id="rSlider" min="1" max="25" value="5" step="1">
+    <span id="rvLabel">5 km</span>
+  </div>
+
+  <!-- Station list -->
+  <div class="slist" id="slist">
+    <div class="empty">
+      <div class="empty-ico">⛽</div>
+      <h3>No stations yet</h3>
+      <p>Tap <strong style="color:#fff">Find Nearby</strong> to load gas stations around you, sorted by price.</p>
+    </div>
+  </div>
+
+</div>
+
+<!-- Report price modal -->
+<div class="overlay" id="overlay">
+  <div class="modal">
+    <h3>Report a Price</h3>
+    <p class="msub" id="mName"></p>
+    <label class="flbl">Fuel Type</label>
+    <select id="mFuel">
+      <option value="87">87 Octane</option>
+      <option value="90">90 Octane</option>
+      <option value="diesel">Diesel</option>
+    </select>
+    <label class="flbl">Price per litre (JMD)</label>
+    <input type="number" id="mPrice" placeholder="e.g. 188.50" min="100" max="350" step="0.01">
+    <div class="modal-btns">
+      <button class="btn-cancel" id="cancelBtn">Cancel</button>
+      <button class="btn-submit" id="submitBtn">Submit</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast">
+  <span class="tdot" id="tdot"></span>
+  <span id="tmsg"></span>
+</div>
+
+<script>
+// ── PCJ Price API ─────────────────────────────────────────────────────────────
+// Replace this URL with your Cloudflare Worker URL after deploying
+const WORKER_URL = 'https://petrolja-prices.petroja.workers.dev';
+
+// Fallback prices used while fetching or if fetch fails
+const PCJ_FALLBACK = { '87': 191.49, '90': 202.95, 'diesel': 177.22 };
+
+// Live prices — starts as fallback, gets replaced by worker response
+let PCJ = { ...PCJ_FALLBACK };
+
+// Fetch live prices from the worker on app load
+async function fetchLivePrices() {
+  try {
+    const res = await fetch(WORKER_URL, {
+      signal: AbortSignal.timeout(6000),
+      cache: 'no-store',
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+
+    // Update PCJ object with live values
+    if (data.octane87) PCJ['87']      = data.octane87;
+    if (data.octane90) PCJ['90']      = data.octane90;
+    if (data.diesel)   PCJ['diesel']  = data.diesel;
+
+    // Update the PCJ strip in the UI
+    updatePCJStrip(data);
+
+    console.log(`[PetrolJA] Live prices loaded (${data.source}):`, PCJ);
+  } catch (err) {
+    // Silently fall back to hardcoded prices — app still works
+    console.warn('[PetrolJA] Could not fetch live prices, using fallback:', err.message);
+  }
+}
+
+function updatePCJStrip(data) {
+  const cells = document.querySelectorAll('.pcj-num');
+  if (cells[0]) cells[0].textContent = `$${PCJ['87'].toFixed(2)}`;
+  if (cells[1]) cells[1].textContent = `$${PCJ['90'].toFixed(2)}`;
+  if (cells[2]) cells[2].textContent = `$${PCJ['diesel'].toFixed(2)}`;
+
+  // Show source badge
+  const sub = document.getElementById('sheetSub');
+  if (sub && data.source === 'pcj-live') {
+    sub.textContent = `Prices live from PCJ · ${new Date(data.updatedAt).toLocaleDateString('en-JM')}`;
+  }
+}
+
+// Kick off the live price fetch immediately
+fetchLivePrices();
+
+// Sheet snap points (translateY values — 0 = fully up)
+// These are set dynamically based on screen height
+let SNAP_PEEK, SNAP_HALF, SNAP_FULL;
+
+function calcSnaps() {
+  const h = window.innerHeight;
+  SNAP_FULL = h * 0.08;    // 92% of screen height
+  SNAP_HALF = h * 0.45;    // 55% of screen height
+  SNAP_PEEK = h * 0.82;    // just the header peeking
+}
+calcSnaps();
+
+// ── State ─────────────────────────────────────────────────────────────────────
+let userLat = null, userLng = null;
+let stations = [], mapMarkers = [];
+let activeFuel = '87', searchRadius = 5000;
+let reportingId = null;
+let reportingName = '';
+let currentSnap = null; // set after first load
+
+// ── Map ───────────────────────────────────────────────────────────────────────
+const map = L.map('map', { zoomControl: false, attributionControl: false })
+  .setView([18.1, -77.3], 9);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+  subdomains: 'abcd', maxZoom: 19
+}).addTo(map);
+
+let uCircle = null, uPin = null;
+function drawUser() {
+  if (uCircle) { map.removeLayer(uCircle); map.removeLayer(uPin); }
+  uCircle = L.circle([userLat, userLng], {
+    radius: searchRadius, color: '#fff', fillColor: '#fff',
+    fillOpacity: 0.03, weight: 1, dashArray: '5 5'
+  }).addTo(map);
+  uPin = L.circleMarker([userLat, userLng], {
+    radius: 7, color: '#fff', fillColor: '#fff', fillOpacity: 1, weight: 2
+  }).addTo(map);
+}
+
+// ── Bottom sheet drag ─────────────────────────────────────────────────────────
+const sheet = document.getElementById('sheet');
+const handle = document.getElementById('sheetHandle');
+
+let dragStartY = 0, dragStartTranslate = 0, isDragging = false;
+
+function getTranslate() {
+  const t = sheet.style.transform;
+  const m = t.match(/translateY\((.+)px\)/);
+  return m ? parseFloat(m[1]) : SNAP_PEEK;
+}
+
+function snapTo(y, animate = true) {
+  sheet.style.transition = animate ? 'transform 0.35s cubic-bezier(0.32, 0.72, 0, 1)' : 'none';
+  sheet.style.transform = `translateY(${y}px)`;
+  currentSnap = y;
+  // Adjust FAB position
+  const fab = document.getElementById('fab');
+  fab.style.bottom = y < SNAP_HALF
+    ? 'calc(env(safe-area-inset-bottom, 0px) + 28px)'
+    : `calc(${window.innerHeight - y + 12}px)`;
+}
+
+function closestSnap(y) {
+  const snaps = [SNAP_FULL, SNAP_HALF, SNAP_PEEK];
+  return snaps.reduce((a, b) => Math.abs(b - y) < Math.abs(a - y) ? b : a);
+}
+
+handle.addEventListener('touchstart', e => {
+  isDragging = true;
+  dragStartY = e.touches[0].clientY;
+  dragStartTranslate = getTranslate();
+  sheet.style.transition = 'none';
+}, { passive: true });
+
+handle.addEventListener('touchmove', e => {
+  if (!isDragging) return;
+  const dy = e.touches[0].clientY - dragStartY;
+  const newY = Math.max(SNAP_FULL, Math.min(SNAP_PEEK, dragStartTranslate + dy));
+  sheet.style.transform = `translateY(${newY}px)`;
+}, { passive: true });
+
+handle.addEventListener('touchend', e => {
+  if (!isDragging) return;
+  isDragging = false;
+  const vel = e.changedTouches[0].clientY - dragStartY;
+  // Snap to next position based on velocity
+  let target;
+  if (vel > 60)      target = currentSnap === SNAP_FULL ? SNAP_HALF : SNAP_PEEK;
+  else if (vel < -60) target = currentSnap === SNAP_PEEK ? SNAP_HALF : SNAP_FULL;
+  else               target = closestSnap(getTranslate());
+  snapTo(target);
+});
+
+// Tap handle to toggle between peek and half
+handle.addEventListener('click', e => {
+  if (Math.abs(getTranslate() - dragStartTranslate) > 10) return; // was a drag
+  if (currentSnap === SNAP_PEEK || currentSnap === null) snapTo(SNAP_HALF);
+  else if (currentSnap === SNAP_HALF) snapTo(SNAP_FULL);
+  else snapTo(SNAP_PEEK);
+});
+
+// Init sheet position
+window.addEventListener('resize', () => { calcSnaps(); snapTo(currentSnap ?? SNAP_PEEK, false); });
+snapTo(SNAP_PEEK, false);
+
+// ── Slider ────────────────────────────────────────────────────────────────────
+const rSlider = document.getElementById('rSlider');
+rSlider.addEventListener('input', () => {
+  searchRadius = parseInt(rSlider.value) * 1000;
+  document.getElementById('rvLabel').textContent = rSlider.value + ' km';
+  if (uCircle) uCircle.setRadius(searchRadius);
+});
+rSlider.addEventListener('change', () => { if (userLat !== null) loadStations(); });
+
+// ── Fuel tabs ─────────────────────────────────────────────────────────────────
+document.querySelectorAll('.fpill').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.fpill').forEach(b => b.classList.remove('on'));
+    btn.classList.add('on');
+    activeFuel = btn.dataset.f;
+    if (stations.length) renderList();
+  });
+});
+
+// ── FAB ───────────────────────────────────────────────────────────────────────
+document.getElementById('fab').addEventListener('click', locate);
+
+function locate() {
+  if (!navigator.geolocation) { showToast('Geolocation not supported', false); return; }
+  const fab = document.getElementById('fab');
+  fab.disabled = true;
+  fab.classList.add('loading');
+  fab.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 12a9 9 0 11-6.219-8.56"/></svg> Locating…`;
+  setEmpty('📡', 'Getting location…', 'Please allow location access.');
+
+  navigator.geolocation.getCurrentPosition(
+    pos => {
+      userLat = pos.coords.latitude;
+      userLng = pos.coords.longitude;
+      map.flyTo([userLat, userLng], 14, { duration: 1.2 });
+      drawUser();
+      loadStations();
+    },
+    err => {
+      fab.disabled = false;
+      fab.classList.remove('loading');
+      fab.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="3"/><path d="M12 2v3m0 14v3M2 12h3m14 0h3"/></svg> Find Nearby`;
+      const msg = err.code === 1 ? 'Location denied — allow it in browser settings' : 'Could not get location';
+      setEmpty('🚫', 'Location unavailable', msg);
+      showToast(msg, false);
+    },
+    { enableHighAccuracy: true, timeout: 12000 }
+  );
+}
+
+// ── Load stations ─────────────────────────────────────────────────────────────
+async function loadStations() {
+  setEmpty('🔄', 'Fetching stations…', 'Searching nearby…');
+  const q = `[out:json][timeout:30];(node["amenity"="fuel"](around:${searchRadius},${userLat},${userLng});way["amenity"="fuel"](around:${searchRadius},${userLat},${userLng}););out center;`;
+  const mirrors = [
+    'https://overpass-api.de/api/interpreter',
+    'https://overpass.kumi.systems/api/interpreter',
+    'https://overpass.openstreetmap.ru/api/interpreter'
+  ];
+  let elements = null;
+  for (const url of mirrors) {
+    try {
+      const r = await fetch(url, { method: 'POST', body: q });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      elements = (await r.json()).elements || [];
+      break;
+    } catch {}
+  }
+
+  const fab = document.getElementById('fab');
+  fab.disabled = false;
+  fab.classList.remove('loading');
+  fab.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="3"/><path d="M12 2v3m0 14v3M2 12h3m14 0h3"/></svg> Refresh`;
+
+  if (elements === null) {
+    setEmpty('⚠️', 'Load failed', 'Check your connection and try again.');
+    return;
+  }
+
+  stations = elements.map(el => {
+    const lat = el.lat ?? el.center?.lat;
+    const lng = el.lon ?? el.center?.lon;
+    if (!lat || !lng) return null;
+    return { ...el, lat, lng, distance: haversine(userLat, userLng, lat, lng) };
+  }).filter(Boolean);
+
+  // Fetch shared community prices from Supabase, then render
+  await fetchCommunityPrices();
+  renderList();
+  snapTo(SNAP_HALF);
+}
+
+// ── Haversine ─────────────────────────────────────────────────────────────────
+function haversine(la1, lo1, la2, lo2) {
+  const R = 6371, dLa = (la2-la1)*Math.PI/180, dLo = (lo2-lo1)*Math.PI/180;
+  const a = Math.sin(dLa/2)**2 + Math.cos(la1*Math.PI/180)*Math.cos(la2*Math.PI/180)*Math.sin(dLo/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+// ── Supabase config ───────────────────────────────────────────────────────────
+// Paste your values from Supabase dashboard → Settings → API
+const SUPABASE_URL = 'https://YOUR-PROJECT.supabase.co';
+const SUPABASE_KEY = 'YOUR-ANON-KEY';
+
+// In-memory cache of community prices fetched from Supabase
+// Structure: { [station_id]: { '87': price, '90': price, 'diesel': price, counts: {...} } }
+let communityPrices = {};
+
+// Fetch all community-reported prices from Supabase (latest per station+fuel)
+async function fetchCommunityPrices() {
+  try {
+    const res = await fetch(
+      `${SUPABASE_URL}/rest/v1/latest_prices?select=station_id,fuel_type,price`,
+      {
+        headers: {
+          'apikey':        SUPABASE_KEY,
+          'Authorization': `Bearer ${SUPABASE_KEY}`,
+        },
+        signal: AbortSignal.timeout(8000),
+      }
+    );
+    if (!res.ok) throw new Error('Supabase HTTP ' + res.status);
+    const rows = await res.json();
+    // Build lookup: communityPrices[station_id][fuel_type] = price
+    communityPrices = {};
+    for (const row of rows) {
+      if (!communityPrices[row.station_id]) communityPrices[row.station_id] = {};
+      communityPrices[row.station_id][row.fuel_type] = row.price;
+    }
+    console.log(`[PetrolJA] Loaded ${rows.length} community price reports`);
+  } catch (err) {
+    console.warn('[PetrolJA] Could not load community prices:', err.message);
+  }
+}
+
+// Submit a price report to Supabase
+async function submitPriceToSupabase(stationId, stationName, fuelType, price) {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/price_reports`, {
+    method: 'POST',
+    headers: {
+      'apikey':        SUPABASE_KEY,
+      'Authorization': `Bearer ${SUPABASE_KEY}`,
+      'Content-Type':  'application/json',
+      'Prefer':        'return=minimal',
+    },
+    body: JSON.stringify({
+      station_id:   String(stationId),
+      station_name: stationName,
+      fuel_type:    fuelType,
+      price:        price,
+    }),
+    signal: AbortSignal.timeout(8000),
+  });
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Supabase insert failed: ${err}`);
+  }
+  // Update local cache immediately so UI refreshes without another fetch
+  if (!communityPrices[stationId]) communityPrices[stationId] = {};
+  communityPrices[stationId][fuelType] = price;
+}
+
+// ── Render list ───────────────────────────────────────────────────────────────
+function renderList() {
+  const list = document.getElementById('slist');
+  const f = activeFuel;
+  const pcj = PCJ[f];
+
+  const items = stations.map(s => {
+    const cp = communityPrices[s.id]?.[f] ?? null;
+    return { ...s, communityPrice: cp, displayPrice: cp ?? pcj, isOfficial: cp === null };
+  });
+
+  // Sort by distance when all prices are the same PCJ rate; by price when community reports exist
+  const anyReported = items.some(s => !s.isOfficial);
+  if (anyReported) {
+    items.sort((a, b) => a.displayPrice !== b.displayPrice ? a.displayPrice - b.displayPrice : a.distance - b.distance);
+  } else {
+    items.sort((a, b) => a.distance - b.distance);
+  }
+
+  clearMarkers();
+  list.innerHTML = '';
+
+  const count = items.length;
+  document.getElementById('countLbl').textContent = count ? `${count} stations found` : 'No stations';
+  document.getElementById('sheetSub').textContent = anyReported ? 'sorted by price' : 'sorted by distance · tap to report prices';
+
+  if (!count) {
+    list.innerHTML = `<div class="empty"><div class="empty-ico">🔍</div><h3>Nothing nearby</h3><p>Try a larger radius.</p></div>`;
+    return;
+  }
+
+  // Banner when all prices are PCJ official
+  if (!anyReported) {
+    const banner = document.createElement('div');
+    banner.style.cssText = `margin:0 0 8px;padding:11px 14px;background:var(--raised);border:1px solid var(--line2);border-radius:12px;font-size:0.78rem;color:var(--sub);line-height:1.55;`;
+    banner.innerHTML = `<span style="color:var(--white);font-weight:700;">ℹ️ Why same price?</span><br>PCJ sets a weekly max — most stations charge exactly that. Sorted nearest first. Tap ✏️ on any station you visit to report the real pump price.`;
+    list.appendChild(banner);
+  }
+
+  // Badges only when community prices differ
+  const community = items.filter(s => !s.isOfficial);
+  const pool = community.length > 1 ? community : [];
+  const cheapestId  = pool[0]?.id ?? null;
+  const priesiestId = pool.length > 1 ? pool[pool.length - 1]?.id ?? null : null;
+
+  // ── Build display names — detect duplicates and append location ──────────────
+  // First pass: collect raw names for all items
+  const rawNames = items.map(s => s.tags?.name || s.tags?.brand || 'Petrol Station');
+
+  // Count how many times each name appears
+  const nameCounts = {};
+  rawNames.forEach(n => { nameCounts[n] = (nameCounts[n] || 0) + 1; });
+
+  // Build a disambiguated display name for each station
+  function buildDisplayName(s, rawName) {
+    if (nameCounts[rawName] <= 1) return rawName; // unique — just use the name
+
+    // Duplicate name — append the most specific location we have
+    const community = s.tags?.['addr:city']
+      || s.tags?.['addr:suburb']
+      || s.tags?.['addr:neighbourhood']
+      || s.tags?.['addr:street']
+      || s.tags?.['addr:parish']
+      || null;
+
+    return community ? `${rawName} — ${community}` : rawName;
+  }
+
+  items.forEach((s, idx) => {
+    const rawName = s.tags?.name || s.tags?.brand || 'Petrol Station';
+    const name    = buildDisplayName(s, rawName);
+    const addrArr = [s.tags?.['addr:housenumber'], s.tags?.['addr:street'], s.tags?.['addr:city'], s.tags?.['addr:parish']].filter(Boolean);
+    const addr = addrArr.length ? addrArr.join(', ') : 'Jamaica';
+    const km = s.distance.toFixed(1);
+    const isCheapest = cheapestId && s.id === cheapestId;
+    const isPriciest = priesiestId && s.id === priesiestId;
+    const dirUrl = `https://www.google.com/maps/dir/?api=1&origin=${userLat},${userLng}&destination=${s.lat},${s.lng}&travelmode=driving`;
+
+    const rptStyle = !anyReported
+      ? `style="background:var(--white);color:#000;border-color:var(--white);"`
+      : ``;
+
+    const card = document.createElement('div');
+    card.className = 'card' + (isCheapest ? ' cheapest' : isPriciest ? ' priciest' : '');
+    card.innerHTML = `
+      <div class="c-row">
+        <span class="c-num">${idx+1}</span>
+        <span class="c-name">${esc(name)}</span>
+        <div class="c-right">
+          ${isCheapest ? `<span class="badge badge-g">Cheapest</span>` : isPriciest ? `<span class="badge badge-r">Priciest</span>` : ''}
+          <span class="c-price-chip">$${s.displayPrice.toFixed(0)}</span>
+          <span class="c-dist">${km}km</span>
+        </div>
+      </div>
+      <div class="c-detail">
+        <div class="c-addr">${esc(addr)}</div>
+        <div class="c-price-row">
+          <div>
+            <div class="c-price-lbl">${f === 'diesel' ? 'Diesel' : f + ' Octane'}</div>
+            <div class="c-price-num">$${s.displayPrice.toFixed(2)}<sup class="c-price-unit"> JMD/L</sup></div>
+            <span class="c-price-src ${s.isOfficial ? 'src-off' : 'src-com'}">${s.isOfficial ? 'PCJ max — tap below if you see a different price' : '✓ Community report'}</span>
+          </div>
+        </div>
+        <div class="c-actions">
+          <a class="btn-nav" href="${dirUrl}" target="_blank" rel="noopener noreferrer">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+            Open in Google Maps
+          </a>
+          <button class="btn-rpt" ${rptStyle} data-id="${s.id}" data-name="${esc(name)}">✏️ ${s.isOfficial ? 'Report the actual price you see' : 'Update price'}</button>
+        </div>
+        ${s.reportCount > 0 ? `<div class="c-reports">👥 ${s.reportCount} report${s.reportCount > 1 ? 's' : ''}</div>` : ''}
+      </div>`;
+
+    card.addEventListener('click', function(e) {
+      if (e.target.closest('.btn-rpt') || e.target.closest('.btn-nav')) return;
+      const isOpen = card.classList.contains('open');
+      document.querySelectorAll('.card.open').forEach(c => c.classList.remove('open'));
+      if (!isOpen) {
+        card.classList.add('open');
+        map.flyTo([s.lat, s.lng], 15, { duration: 0.8 });
+        const mk = mapMarkers.find(m => m.id === s.id);
+        if (mk) mk.marker.openPopup();
+        snapTo(SNAP_HALF);
+        setTimeout(() => card.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 100);
+      }
+    });
+
+    card.querySelector('.btn-rpt').addEventListener('click', function(e) {
+      e.stopPropagation();
+      reportingId   = s.id;
+      reportingName = name;
+      document.getElementById('mName').textContent = name;
+      document.getElementById('mFuel').value = activeFuel;
+      document.getElementById('mPrice').value = '';
+      document.getElementById('overlay').classList.add('open');
+      setTimeout(() => document.getElementById('mPrice').focus(), 100);
+    });
+
+    list.appendChild(card);
+
+    // Map marker
+    const col = isCheapest ? '#4ade80' : isPriciest ? '#f87171' : '#555';
+    const icon = L.divIcon({
+      className: '',
+      html: `<div style="width:12px;height:12px;border-radius:50%;background:${col};border:2px solid #0c0c0c;box-shadow:0 0 8px ${col}99;"></div>`,
+      iconSize: [12,12], iconAnchor: [6,6]
+    });
+    const marker = L.marker([s.lat, s.lng], { icon }).addTo(map);
+    marker.bindPopup(
+      `<div class="pu-name">${esc(name)}</div>` +
+      `<div class="pu-addr">${esc(addr)}</div>` +
+      `<div class="pu-price">$${s.displayPrice.toFixed(2)} JMD/L</div>` +
+      `<div class="pu-row"><span class="pu-src">${s.isOfficial ? 'PCJ max' : 'Community'}</span><span class="pu-dist">📍 ${km} km</span></div>`
+    );
+    marker.on('click', () => {
+      document.querySelectorAll('.card.open').forEach(c => c.classList.remove('open'));
+      card.classList.add('open');
+      snapTo(SNAP_HALF);
+      setTimeout(() => card.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 100);
+    });
+    mapMarkers.push({ id: s.id, marker });
+  });
+}
+
+function clearMarkers() { mapMarkers.forEach(m => map.removeLayer(m.marker)); mapMarkers = []; }
+
+// ── Modal ─────────────────────────────────────────────────────────────────────
+document.getElementById('cancelBtn').addEventListener('click', () => document.getElementById('overlay').classList.remove('open'));
+document.getElementById('overlay').addEventListener('click', e => { if (e.target === e.currentTarget) e.currentTarget.classList.remove('open'); });
+document.getElementById('submitBtn').addEventListener('click', async () => {
+  const p = parseFloat(document.getElementById('mPrice').value);
+  const f = document.getElementById('mFuel').value;
+  if (isNaN(p) || p < 100 || p > 350) { showToast('Enter a price between $100 and $350', false); return; }
+
+  // Disable button while saving
+  const btn = document.getElementById('submitBtn');
+  btn.disabled = true;
+  btn.textContent = 'Saving…';
+
+  try {
+    await submitPriceToSupabase(reportingId, reportingName, f, p);
+    document.getElementById('overlay').classList.remove('open');
+    showToast(`$${p.toFixed(2)}/L saved — thank you! 🙌`, true);
+    if (stations.length) renderList();
+  } catch (err) {
+    console.error('Price submit failed:', err);
+    showToast('Could not save — check your connection', false);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Submit';
+  }
+});
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function setEmpty(ico, h, p) {
+  document.getElementById('slist').innerHTML = `<div class="empty"><div class="empty-ico">${ico}</div><h3>${h}</h3><p>${p}</p></div>`;
+  document.getElementById('countLbl').textContent = 'PetrolJA';
+}
+
+function showToast(msg, ok = true) {
+  document.getElementById('tdot').style.background = ok ? '#4ade80' : '#f87171';
+  document.getElementById('tmsg').textContent = msg;
+  const el = document.getElementById('toast');
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 3500);
+}
+
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+</script>
+</body>
+</html>

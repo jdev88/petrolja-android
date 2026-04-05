@@ -1,0 +1,35 @@
+{
+  "name": "PetrolJA – Jamaica Gas Finder",
+  "short_name": "PetrolJA",
+  "description": "Find the cheapest petrol stations near you in Jamaica. Live PCJ prices, community reports, and turn-by-turn navigation.",
+  "start_url": "/PetrolJA-mobile.html",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0c0c0c",
+  "theme_color": "#0c0c0c",
+  "lang": "en-JM",
+  "categories": ["travel", "utilities"],
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "screenshots": [],
+  "shortcuts": [
+    {
+      "name": "Find Nearby",
+      "short_name": "Find",
+      "description": "Find cheapest gas stations near your location",
+      "url": "/PetrolJA-mobile.html"
+    }
+  ]
+}
