@@ -102,22 +102,41 @@ html, body {
 }
 .fpill.on { background: var(--line2); color: var(--white); }
 
-/* ── FAB: Find Nearby ── */
+/* ── FAB: Find Nearby — floats bottom-right initially, moves to topbar after load ── */
 .fab {
   position: fixed;
   bottom: calc(var(--safe-bot) + 28px);
   right: 18px;
-  z-index: 100;
+  z-index: 300;
   display: flex; align-items: center; gap: 8px;
   height: 50px; padding: 0 20px;
   background: var(--white); color: #000;
   border: none; border-radius: 25px;
   font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800; font-size: 0.88rem;
   cursor: pointer; box-shadow: 0 4px 20px rgba(0,0,0,0.5);
-  transition: background 0.15s, transform 0.15s;
+  transition: all 0.3s cubic-bezier(0.32, 0.72, 0, 1);
   -webkit-user-select: none; user-select: none;
 }
-.fab:active { transform: scale(0.96); }
+/* After results load — shrink to icon-only pill in topbar area */
+.fab.compact {
+  bottom: auto;
+  top: calc(var(--safe-top) + 10px);
+  right: 14px;
+  height: 38px;
+  width: 38px;
+  padding: 0;
+  border-radius: 50%;
+  justify-content: center;
+  font-size: 0; /* hide text */
+  gap: 0;
+  background: rgba(20,20,20,0.9);
+  color: var(--white);
+  border: 1px solid var(--line2);
+  box-shadow: none;
+  backdrop-filter: blur(12px);
+}
+.fab.compact svg { color: var(--white); }
+.fab:active { transform: scale(0.94); }
 .fab:disabled { opacity: 0.4; }
 .fab.loading svg { animation: spin 1s linear infinite; }
 
@@ -207,7 +226,7 @@ input[type=range]::-webkit-slider-thumb {
   cursor: pointer;
   transition: border-color 0.18s, background 0.18s, box-shadow 0.18s;
   -webkit-user-select: none; user-select: none;
-  overflow: hidden;
+  /* no overflow:hidden here — it clips the expand animation */
 }
 .card:active:not(.open) {
   background: var(--hover);
@@ -218,8 +237,8 @@ input[type=range]::-webkit-slider-thumb {
   background: #1a1a1a;
   box-shadow: 0 4px 24px rgba(0,0,0,0.4);
 }
-.card.cheapest { border-color: rgba(74,222,128,0.25); }
-.card.priciest  { border-color: rgba(248,113,113,0.2); }
+.card.cheapest { border-color: rgba(74,222,128,0.3); }
+.card.priciest  { border-color: rgba(248,113,113,0.25); }
 
 /* Collapsed row */
 .c-row {
@@ -267,11 +286,12 @@ input[type=range]::-webkit-slider-thumb {
 /* Expanded detail — max-height transition for smooth animation */
 .c-detail {
   max-height: 0;
-  overflow: hidden;
-  transition: max-height 0.32s cubic-bezier(0.32, 0.72, 0, 1);
+  overflow: hidden;          /* clips the expanding content cleanly */
+  border-radius: 0 0 14px 14px; /* matches card radius so bottom corners stay round */
+  transition: max-height 0.3s cubic-bezier(0.32, 0.72, 0, 1);
 }
 .card.open .c-detail {
-  max-height: 400px;
+  max-height: 420px;
 }
 .c-detail-inner {
   padding: 0 12px 14px 12px;
@@ -737,6 +757,7 @@ async function locate() {
   const fab = document.getElementById('fab');
   fab.disabled = true;
   fab.classList.add('loading');
+  fab.classList.remove('compact');
   fab.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 12a9 9 0 11-6.219-8.56"/></svg> Locating…`;
   setEmpty('📡', 'Getting location…', 'Please allow location access when asked.');
 
@@ -863,6 +884,7 @@ async function loadStations() {
   const fab = document.getElementById('fab');
   fab.disabled = false;
   fab.classList.remove('loading');
+  // Keep text while we still might show error; renderList will make it compact
   fab.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="3"/><path d="M12 2v3m0 14v3M2 12h3m14 0h3"/></svg> Refresh`;
 
   if (elements === null) {
@@ -877,12 +899,19 @@ async function loadStations() {
     return { ...el, lat, lng, distance: haversine(userLat, userLng, lat, lng) };
   }).filter(Boolean);
 
-  // Fetch shared community prices from Supabase, then render
-  await fetchCommunityPrices();
+  // ── Render immediately with PCJ prices so user sees results fast ──
   renderList();
   snapTo(SNAP_HALF);
 
-  // Kick off reverse geocoding in the background (doesn't block the UI)
+  // ── Then fetch community prices and silently re-render ──
+  fetchCommunityPrices().then(() => renderList()).catch(() => {});
+
+  // ── Shrink FAB to compact icon now that results are shown ──
+  const fabEl = document.getElementById('fab');
+  fabEl.classList.add('compact');
+  fabEl.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="3"/><path d="M12 2v3m0 14v3M2 12h3m14 0h3"/></svg>`;
+
+  // ── Kick off reverse geocoding in the background ──
   geocodeMissingStations();
 }
 
@@ -897,6 +926,7 @@ function haversine(la1, lo1, la2, lo2) {
 // Paste your values from Supabase dashboard → Settings → API
 const SUPABASE_URL = 'https://xeszxyppshnwgcjcfcij.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhlc3p4eXBwc2hud2djamNmY2lqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUzMDA2MDgsImV4cCI6MjA5MDg3NjYwOH0.pfyrl9Shnza9Jfkdfa7yy1gzvz12pxnaGqfFrcYfHuk';
+
 
 // In-memory cache of community prices fetched from Supabase
 // Structure: { [station_id]: { '87': price, '90': price, 'diesel': price, counts: {...} } }
