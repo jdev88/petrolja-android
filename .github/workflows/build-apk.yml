@@ -62,40 +62,39 @@ jobs:
           MAIN="android/app/src/main/java/com/petrolja/app/MainActivity.java"
 
           cat > "$MAIN" << 'JAVA'
-          package com.petrolja.app;
+package com.petrolja.app;
 
-          import android.os.Bundle;
-          import android.webkit.GeolocationPermissions;
-          import android.webkit.WebChromeClient;
-          import android.webkit.WebView;
-          import com.getcapacitor.BridgeActivity;
+import android.os.Bundle;
+import android.webkit.GeolocationPermissions;
+import android.webkit.WebChromeClient;
+import android.webkit.WebView;
+import com.getcapacitor.BridgeActivity;
 
-          public class MainActivity extends BridgeActivity {
-              @Override
-              public void onCreate(Bundle savedInstanceState) {
-                  super.onCreate(savedInstanceState);
-              }
+public class MainActivity extends BridgeActivity {
 
-              @Override
-              protected void onResume() {
-                  super.onResume();
-                  // Ensure geolocation is enabled in the WebView
-                  WebView webView = getBridge().getWebView();
-                  webView.getSettings().setGeolocationEnabled(true);
-                  webView.setWebChromeClient(new WebChromeClient() {
-                      @Override
-                      public void onGeolocationPermissionsShowPrompt(
-                              String origin,
-                              GeolocationPermissions.Callback callback) {
-                          // Auto-grant geolocation to our own app origin
-                          callback.invoke(origin, true, false);
-                      }
-                  });
-              }
-          }
-          JAVA
+    @Override
+    public void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+    }
 
-          echo "MainActivity.java updated with geolocation support"
+    @Override
+    public void onResume() {
+        super.onResume();
+        WebView webView = getBridge().getWebView();
+        webView.getSettings().setGeolocationEnabled(true);
+        webView.setWebChromeClient(new WebChromeClient() {
+            @Override
+            public void onGeolocationPermissionsShowPrompt(
+                    String origin,
+                    GeolocationPermissions.Callback callback) {
+                callback.invoke(origin, true, false);
+            }
+        });
+    }
+}
+JAVA
+
+          echo "MainActivity.java updated"
 
       - name: Make gradlew executable
         run: chmod +x android/gradlew
