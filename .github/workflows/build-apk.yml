@@ -36,65 +36,21 @@ jobs:
       - name: Sync web assets to Android
         run: npx cap sync android
 
-      # ── Inject location permissions into AndroidManifest.xml ─────────────────
-      # Capacitor does not add location permissions automatically.
-      # We insert them right before the closing </manifest> tag.
       - name: Add location permissions to AndroidManifest
         run: |
           MANIFEST="android/app/src/main/AndroidManifest.xml"
-
-          # Check permissions aren't already there (safe to run multiple times)
           if ! grep -q "ACCESS_FINE_LOCATION" "$MANIFEST"; then
-            sed -i 's|</manifest>|    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />\n    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />\n    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />\n</manifest>|' "$MANIFEST"
-            echo "Location permissions added to AndroidManifest.xml"
-          else
-            echo "Location permissions already present — skipping"
+            sed -i 's|</manifest>|<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/><uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/></manifest>|' "$MANIFEST"
+            echo "Location permissions added"
           fi
+          grep -n "LOCATION" "$MANIFEST" || echo "Warning: permissions not found"
 
-          # Confirm they're in there
-          grep -n "LOCATION" "$MANIFEST"
-
-      # ── Enable JavaScript and geolocation in the WebView ─────────────────────
-      # Capacitor's default WebView settings sometimes block geolocation.
-      # We patch MainActivity to explicitly allow it.
-      - name: Enable geolocation in WebView via MainActivity
+      - name: Copy patched MainActivity with geolocation support
         run: |
-          MAIN="android/app/src/main/java/com/petrolja/app/MainActivity.java"
-
-          cat > "$MAIN" << 'JAVA'
-package com.petrolja.app;
-
-import android.os.Bundle;
-import android.webkit.GeolocationPermissions;
-import android.webkit.WebChromeClient;
-import android.webkit.WebView;
-import com.getcapacitor.BridgeActivity;
-
-public class MainActivity extends BridgeActivity {
-
-    @Override
-    public void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
-    }
-
-    @Override
-    public void onResume() {
-        super.onResume();
-        WebView webView = getBridge().getWebView();
-        webView.getSettings().setGeolocationEnabled(true);
-        webView.setWebChromeClient(new WebChromeClient() {
-            @Override
-            public void onGeolocationPermissionsShowPrompt(
-                    String origin,
-                    GeolocationPermissions.Callback callback) {
-                callback.invoke(origin, true, false);
-            }
-        });
-    }
-}
-JAVA
-
-          echo "MainActivity.java updated"
+          DEST="android/app/src/main/java/com/petrolja/app/MainActivity.java"
+          cp patches/MainActivity.java "$DEST"
+          echo "MainActivity.java copied successfully"
+          head -5 "$DEST"
 
       - name: Make gradlew executable
         run: chmod +x android/gradlew
