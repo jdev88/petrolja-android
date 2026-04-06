@@ -525,6 +525,7 @@ let stations = [], mapMarkers = [];
 let activeFuel = '87', searchRadius = 5000;
 let reportingId = null;
 let reportingName = '';
+let geocodeCache = {};   // { stationId: 'Community Name' } — populated by reverse geocoding
 let currentSnap = null; // set after first load
 
 // ── Map ───────────────────────────────────────────────────────────────────────
@@ -714,6 +715,88 @@ async function locate() {
   }
 }
 
+// ── Reverse geocoding via Nominatim ───────────────────────────────────────────
+// Called after stations load. Finds stations that are duplicates but have no
+// OSM address tags, then fetches community names from Nominatim one by one
+// (rate-limited to 1 request/second to respect Nominatim's usage policy).
+// Re-renders the list silently as each result comes in.
+
+async function geocodeMissingStations() {
+  // Build the same nameCounts the renderer uses
+  const rawNames = stations.map(s => s.tags?.name || s.tags?.brand || 'Petrol Station');
+  const nameCounts = {};
+  rawNames.forEach(n => { nameCounts[n] = (nameCounts[n] || 0) + 1; });
+
+  // Collect stations that are duplicates AND have no useful OSM address tags
+  const needsGeocode = stations.filter(s => {
+    const rawName = s.tags?.name || s.tags?.brand || 'Petrol Station';
+    if (nameCounts[rawName] <= 1) return false;       // unique — skip
+    if (geocodeCache[s.id] !== undefined) return false; // already cached — skip
+    const t = s.tags || {};
+    const hasOSMAddr = t['addr:street'] || t['addr:suburb'] ||
+                       t['addr:neighbourhood'] || t['addr:place'];
+    const city = t['addr:city'];
+    const hasGoodCity = city && !['kingston','spanish town','portmore','montego bay']
+                                  .includes(city.toLowerCase());
+    return !hasOSMAddr && !hasGoodCity && !t['addr:parish'];
+  });
+
+  if (!needsGeocode.length) return; // nothing to do
+
+  console.log(`[PetrolJA] Reverse geocoding ${needsGeocode.length} stations…`);
+
+  for (const s of needsGeocode) {
+    try {
+      const url = `https://nominatim.openstreetmap.org/reverse` +
+        `?lat=${s.lat}&lon=${s.lng}&format=json&zoom=16&addressdetails=1` +
+        `&accept-language=en`;
+
+      const res = await fetch(url, {
+        headers: { 'User-Agent': 'PetrolJA/1.0 (Jamaica gas price finder)' }
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        const addr = data.address || {};
+
+        // Pick the most community-specific label from the response
+        const label =
+          addr.suburb        ||
+          addr.neighbourhood ||
+          addr.quarter       ||
+          addr.village       ||
+          addr.hamlet        ||
+          addr.residential   ||
+          (addr.road && !['kingston','jamaica'].includes((addr.city || '').toLowerCase())
+            ? addr.road : null) ||
+          null;
+
+        if (label) {
+          // Title-case it
+          const minor = new Set(['a','an','the','and','or','of','at','on','in','by','to']);
+          const titled = label.toLowerCase().split(' ').map((w, i) =>
+            (i === 0 || !minor.has(w)) ? w.charAt(0).toUpperCase() + w.slice(1) : w
+          ).join(' ');
+
+          geocodeCache[s.id] = titled;
+          console.log(`[PetrolJA] Geocoded: ${s.tags?.name || s.tags?.brand} → ${titled}`);
+
+          // Re-render the list silently so the name updates in place
+          renderList();
+        } else {
+          geocodeCache[s.id] = null; // mark as tried — don't retry
+        }
+      }
+    } catch (e) {
+      geocodeCache[s.id] = null; // network error — mark as tried
+      console.warn(`[PetrolJA] Geocode failed for station ${s.id}:`, e.message);
+    }
+
+    // Nominatim's usage policy: max 1 request per second
+    await new Promise(r => setTimeout(r, 1100));
+  }
+}
+
 // ── Load stations ─────────────────────────────────────────────────────────────
 async function loadStations() {
   setEmpty('🔄', 'Fetching stations…', 'Searching nearby…');
@@ -754,6 +837,9 @@ async function loadStations() {
   await fetchCommunityPrices();
   renderList();
   snapTo(SNAP_HALF);
+
+  // Kick off reverse geocoding in the background (doesn't block the UI)
+  geocodeMissingStations();
 }
 
 // ── Haversine ─────────────────────────────────────────────────────────────────
@@ -876,67 +962,58 @@ function renderList() {
   const nameCounts = {};
   rawNames.forEach(n => { nameCounts[n] = (nameCounts[n] || 0) + 1; });
 
-  // Title-case a string ("washington blvd" → "Washington Blvd")
   function toTitleCase(str) {
+    if (!str) return str;
     const minor = new Set(['a','an','the','and','or','of','at','on','in','by','to']);
     return str.toLowerCase().split(' ').map((w, i) =>
       (i === 0 || !minor.has(w)) ? w.charAt(0).toUpperCase() + w.slice(1) : w
     ).join(' ');
   }
 
-  // Extract the best location label for a duplicate station
-  // Priority tuned for Jamaican OSM data:
-  //   1. addr:street      → "Washington Blvd"  (most useful — specific road)
-  //   2. addr:suburb      → "Duhaney Park"      (community name)
-  //   3. addr:neighbourhood → "New Kingston"    (neighbourhood)
-  //   4. addr:place       → sometimes set for small communities
-  //   5. addr:city if it's NOT just "Kingston"  (avoid generic)
-  //   6. addr:parish      → "St. Andrew"        (broad but better than nothing)
-  //   7. compass bearing  → "1.2 km NE"         (absolute last resort)
-  function getLocationLabel(s) {
+  // Get best location label from OSM tags alone (no network call)
+  function getOSMLabel(s) {
     const t = s.tags || {};
-
-    // 1. Street name — most specific
-    if (t['addr:street']) return toTitleCase(t['addr:street']);
-
-    // 2. Suburb
-    if (t['addr:suburb']) return toTitleCase(t['addr:suburb']);
-
-    // 3. Neighbourhood
+    if (t['addr:street'])        return toTitleCase(t['addr:street']);
+    if (t['addr:suburb'])        return toTitleCase(t['addr:suburb']);
     if (t['addr:neighbourhood']) return toTitleCase(t['addr:neighbourhood']);
-
-    // 4. Place tag
-    if (t['addr:place']) return toTitleCase(t['addr:place']);
-
-    // 5. City — only if it's not a generic "Kingston" or "Spanish Town"
-    //    (those cover huge areas and don't help tell stations apart)
+    if (t['addr:place'])         return toTitleCase(t['addr:place']);
     const city = t['addr:city'];
     if (city && !['kingston','spanish town','portmore','montego bay'].includes(city.toLowerCase())) {
       return toTitleCase(city);
     }
-
-    // 6. Parish
     if (t['addr:parish']) return toTitleCase(t['addr:parish']);
+    return null; // nothing useful in OSM tags
+  }
 
-    // 7. Compute a compass bearing + distance as absolute last resort
-    //    e.g. "1.2 km NE" — at least tells the user which direction
-    if (userLat && userLng && s.lat && s.lng) {
-      const km = s.distance.toFixed(1);
-      const dLat = s.lat - userLat;
-      const dLng = s.lng - userLng;
-      const angle = Math.atan2(dLng, dLat) * 180 / Math.PI;
-      const dirs = ['N','NE','E','SE','S','SW','W','NW','N'];
-      const compass = dirs[Math.round((angle + 360) % 360 / 45)];
-      return `${km} km ${compass}`;
-    }
-
-    return null;
+  // Pick best community name from a Nominatim address response
+  function nominatimLabel(addr) {
+    // Priority order of Nominatim fields that give community-level names for Jamaica
+    const val =
+      addr.suburb        ||
+      addr.neighbourhood ||
+      addr.quarter       ||
+      addr.village       ||
+      addr.hamlet        ||
+      addr.residential   ||
+      addr.road          ||
+      null;
+    // Skip if it's a very generic place name
+    if (!val) return null;
+    const lower = val.toLowerCase();
+    if (['kingston','jamaica'].includes(lower)) return addr.road ? toTitleCase(addr.road) : null;
+    return toTitleCase(val);
   }
 
   function buildDisplayName(s, rawName) {
-    if (nameCounts[rawName] <= 1) return rawName; // unique — no disambiguation needed
-    const loc = getLocationLabel(s);
-    return loc ? `${rawName} — ${loc}` : rawName;
+    if (nameCounts[rawName] <= 1) return rawName;
+    // Check OSM tags first (instant, no network)
+    const osmLabel = getOSMLabel(s);
+    if (osmLabel) return `${rawName} — ${osmLabel}`;
+    // Check reverse-geocode cache (populated asynchronously below)
+    const cached = geocodeCache[s.id];
+    if (cached) return `${rawName} — ${cached}`;
+    // Placeholder while geocoding is in progress
+    return rawName;
   }
 
   items.forEach((s, idx) => {
