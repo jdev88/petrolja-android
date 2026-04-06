@@ -871,27 +871,72 @@ function renderList() {
   const cheapestId  = pool[0]?.id ?? null;
   const priesiestId = pool.length > 1 ? pool[pool.length - 1]?.id ?? null : null;
 
-  // ── Build display names — detect duplicates and append location ──────────────
-  // First pass: collect raw names for all items
+  // ── Build display names — detect duplicates and append best location ──────────
   const rawNames = items.map(s => s.tags?.name || s.tags?.brand || 'Petrol Station');
-
-  // Count how many times each name appears
   const nameCounts = {};
   rawNames.forEach(n => { nameCounts[n] = (nameCounts[n] || 0) + 1; });
 
-  // Build a disambiguated display name for each station
+  // Title-case a string ("washington blvd" → "Washington Blvd")
+  function toTitleCase(str) {
+    const minor = new Set(['a','an','the','and','or','of','at','on','in','by','to']);
+    return str.toLowerCase().split(' ').map((w, i) =>
+      (i === 0 || !minor.has(w)) ? w.charAt(0).toUpperCase() + w.slice(1) : w
+    ).join(' ');
+  }
+
+  // Extract the best location label for a duplicate station
+  // Priority tuned for Jamaican OSM data:
+  //   1. addr:street      → "Washington Blvd"  (most useful — specific road)
+  //   2. addr:suburb      → "Duhaney Park"      (community name)
+  //   3. addr:neighbourhood → "New Kingston"    (neighbourhood)
+  //   4. addr:place       → sometimes set for small communities
+  //   5. addr:city if it's NOT just "Kingston"  (avoid generic)
+  //   6. addr:parish      → "St. Andrew"        (broad but better than nothing)
+  //   7. compass bearing  → "1.2 km NE"         (absolute last resort)
+  function getLocationLabel(s) {
+    const t = s.tags || {};
+
+    // 1. Street name — most specific
+    if (t['addr:street']) return toTitleCase(t['addr:street']);
+
+    // 2. Suburb
+    if (t['addr:suburb']) return toTitleCase(t['addr:suburb']);
+
+    // 3. Neighbourhood
+    if (t['addr:neighbourhood']) return toTitleCase(t['addr:neighbourhood']);
+
+    // 4. Place tag
+    if (t['addr:place']) return toTitleCase(t['addr:place']);
+
+    // 5. City — only if it's not a generic "Kingston" or "Spanish Town"
+    //    (those cover huge areas and don't help tell stations apart)
+    const city = t['addr:city'];
+    if (city && !['kingston','spanish town','portmore','montego bay'].includes(city.toLowerCase())) {
+      return toTitleCase(city);
+    }
+
+    // 6. Parish
+    if (t['addr:parish']) return toTitleCase(t['addr:parish']);
+
+    // 7. Compute a compass bearing + distance as absolute last resort
+    //    e.g. "1.2 km NE" — at least tells the user which direction
+    if (userLat && userLng && s.lat && s.lng) {
+      const km = s.distance.toFixed(1);
+      const dLat = s.lat - userLat;
+      const dLng = s.lng - userLng;
+      const angle = Math.atan2(dLng, dLat) * 180 / Math.PI;
+      const dirs = ['N','NE','E','SE','S','SW','W','NW','N'];
+      const compass = dirs[Math.round((angle + 360) % 360 / 45)];
+      return `${km} km ${compass}`;
+    }
+
+    return null;
+  }
+
   function buildDisplayName(s, rawName) {
-    if (nameCounts[rawName] <= 1) return rawName; // unique — just use the name
-
-    // Duplicate name — append the most specific location we have
-    const community = s.tags?.['addr:city']
-      || s.tags?.['addr:suburb']
-      || s.tags?.['addr:neighbourhood']
-      || s.tags?.['addr:street']
-      || s.tags?.['addr:parish']
-      || null;
-
-    return community ? `${rawName} — ${community}` : rawName;
+    if (nameCounts[rawName] <= 1) return rawName; // unique — no disambiguation needed
+    const loc = getLocationLabel(s);
+    return loc ? `${rawName} — ${loc}` : rawName;
   }
 
   items.forEach((s, idx) => {
