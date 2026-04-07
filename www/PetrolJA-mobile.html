@@ -182,10 +182,9 @@ body.light {
 /* ── Bottom sheet ── */
 .sheet {
   position: fixed;
-  left: 0; right: 0;
-  bottom: 0;
+  left: 0; right: 0; bottom: 0;
   z-index: 200;
-  height: 100vh;          /* MUST be 100vh — translateY math depends on this */
+  height: 92vh;           /* sheet is exactly 92vh — content never goes off-screen */
   background: var(--panel);
   border-radius: 20px 20px 0 0;
   border-top: 1px solid var(--line2);
@@ -621,15 +620,20 @@ function updatePCJStrip(data) {
 // Kick off the live price fetch immediately
 fetchLivePrices();
 
-// Sheet snap points (translateY values — 0 = fully up)
-// These are set dynamically based on screen height
-let SNAP_PEEK, SNAP_HALF, SNAP_FULL;
+// ── Bottom sheet snap system ───────────────────────────────────────────────────
+// Sheet is 92vh tall, anchored at bottom:0.
+// translateY(0)   = fully open  (sheet top is at 8vh from screen top)
+// translateY(mid) = half open
+// translateY(max) = peeking     (90px handle visible)
+// All content stays within the 92vh height — nothing goes off-screen.
+
+let SNAP_FULL, SNAP_HALF, SNAP_PEEK;
 
 function calcSnaps() {
-  const h = window.innerHeight;
-  SNAP_FULL = h * 0.08;    // sheet top at 8% → 92% of screen visible
-  SNAP_HALF = h * 0.50;    // sheet top at 50% → half screen visible
-  SNAP_PEEK = h - 90;      // always show exactly 90px (handle + title bar) — never off screen
+  const sheetH = window.innerHeight * 0.92; // actual sheet height in px
+  SNAP_FULL = 0;                            // fully open
+  SNAP_HALF = sheetH * 0.45;               // ~half visible
+  SNAP_PEEK = sheetH - 90;                 // just the handle visible (90px)
 }
 calcSnaps();
 
@@ -718,14 +722,18 @@ function getTranslate() {
 }
 
 function snapTo(y, animate = true) {
+  const clamped = Math.max(SNAP_FULL, Math.min(SNAP_PEEK, y));
   sheet.style.transition = animate ? 'transform 0.35s cubic-bezier(0.32, 0.72, 0, 1)' : 'none';
-  sheet.style.transform = `translateY(${y}px)`;
-  currentSnap = y;
-  // Adjust FAB position
+  sheet.style.transform = `translateY(${clamped}px)`;
+  currentSnap = clamped;
+
+  // Move FAB above the visible sheet edge (only when not in compact topbar mode)
   const fab = document.getElementById('fab');
-  fab.style.bottom = y < SNAP_HALF
-    ? 'calc(env(safe-area-inset-bottom, 0px) + 28px)'
-    : `calc(${window.innerHeight - y + 12}px)`;
+  if (!fab.classList.contains('compact')) {
+    const sheetH = window.innerHeight * 0.92;
+    const visibleH = sheetH - clamped; // how much sheet is showing
+    fab.style.bottom = `calc(${visibleH + 12}px)`;
+  }
 }
 
 function closestSnap(y) {
@@ -751,24 +759,22 @@ handle.addEventListener('touchend', e => {
   if (!isDragging) return;
   isDragging = false;
   const vel = e.changedTouches[0].clientY - dragStartY;
-  // Snap to next position based on velocity
   let target;
-  if (vel > 60)      target = currentSnap === SNAP_FULL ? SNAP_HALF : SNAP_PEEK;
-  else if (vel < -60) target = currentSnap === SNAP_PEEK ? SNAP_HALF : SNAP_FULL;
-  else               target = closestSnap(getTranslate());
+  if      (vel >  80) target = currentSnap <= SNAP_HALF ? SNAP_HALF : SNAP_PEEK;
+  else if (vel < -80) target = currentSnap >= SNAP_HALF ? SNAP_HALF : SNAP_FULL;
+  else                target = closestSnap(getTranslate());
   snapTo(target);
 });
 
-// Tap handle to toggle between peek and full
+// Tap handle: toggle between peek and full
 handle.addEventListener('click', e => {
-  if (Math.abs(getTranslate() - dragStartTranslate) > 10) return; // was a drag
-  if (currentSnap >= SNAP_HALF) snapTo(SNAP_FULL);  // peeking or half → go full
-  else snapTo(SNAP_PEEK);                            // full → peek
+  if (Math.abs(getTranslate() - dragStartTranslate) > 10) return;
+  snapTo(currentSnap >= SNAP_HALF ? SNAP_FULL : SNAP_PEEK);
 });
 
 // Init sheet position
 window.addEventListener('resize', () => { calcSnaps(); snapTo(currentSnap ?? SNAP_PEEK, false); });
-snapTo(SNAP_PEEK, false);
+snapTo(SNAP_PEEK, false); // start peeking (90px handle visible)
 
 // ── Slider ────────────────────────────────────────────────────────────────────
 const rSlider = document.getElementById('rSlider');
