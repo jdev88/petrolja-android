@@ -767,7 +767,7 @@ async function locate() {
     userLng = longitude;
     map.flyTo([userLat, userLng], 14, { duration: 1.2 });
     drawUser();
-    loadStations();
+    await loadStations(); // await so FAB state is always resolved
   } catch (err) {
     fab.disabled = false;
     fab.classList.remove('loading');
@@ -865,30 +865,38 @@ async function geocodeMissingStations() {
 // ── Load stations ─────────────────────────────────────────────────────────────
 async function loadStations() {
   setEmpty('🔄', 'Fetching stations…', 'Searching nearby…');
-  const q = `[out:json][timeout:30];(node["amenity"="fuel"](around:${searchRadius},${userLat},${userLng});way["amenity"="fuel"](around:${searchRadius},${userLat},${userLng}););out center;`;
+  const q = `[out:json][timeout:20];(node["amenity"="fuel"](around:${searchRadius},${userLat},${userLng});way["amenity"="fuel"](around:${searchRadius},${userLat},${userLng}););out center;`;
   const mirrors = [
     'https://overpass-api.de/api/interpreter',
     'https://overpass.kumi.systems/api/interpreter',
     'https://overpass.openstreetmap.ru/api/interpreter'
   ];
   let elements = null;
+
+  // Try each mirror with a 15-second timeout — don't let any one hang forever
   for (const url of mirrors) {
     try {
-      const r = await fetch(url, { method: 'POST', body: q });
+      const r = await fetch(url, {
+        method: 'POST',
+        body: q,
+        signal: AbortSignal.timeout(15000)
+      });
       if (!r.ok) throw new Error('HTTP ' + r.status);
       elements = (await r.json()).elements || [];
       break;
-    } catch {}
+    } catch (e) {
+      console.warn('[PetrolJA] Mirror failed:', url, e.message);
+    }
   }
 
+  // Always reset the FAB — no matter what happens below
   const fab = document.getElementById('fab');
   fab.disabled = false;
   fab.classList.remove('loading');
-  // Keep text while we still might show error; renderList will make it compact
   fab.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="3"/><path d="M12 2v3m0 14v3M2 12h3m14 0h3"/></svg> Refresh`;
 
   if (elements === null) {
-    setEmpty('⚠️', 'Load failed', 'Check your connection and try again.');
+    setEmpty('⚠️', 'Load failed', 'Could not reach station data. Check your connection and try again.');
     return;
   }
 
@@ -903,13 +911,12 @@ async function loadStations() {
   renderList();
   snapTo(SNAP_HALF);
 
-  // ── Then fetch community prices and silently re-render ──
-  fetchCommunityPrices().then(() => renderList()).catch(() => {});
+  // ── Fetch community prices silently in background, then re-render ──
+  fetchCommunityPrices().then(() => { if (stations.length) renderList(); }).catch(() => {});
 
-  // ── Shrink FAB to compact icon now that results are shown ──
-  const fabEl = document.getElementById('fab');
-  fabEl.classList.add('compact');
-  fabEl.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="3"/><path d="M12 2v3m0 14v3M2 12h3m14 0h3"/></svg>`;
+  // ── Shrink FAB to compact icon ──
+  fab.classList.add('compact');
+  fab.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="3"/><path d="M12 2v3m0 14v3M2 12h3m14 0h3"/></svg>`;
 
   // ── Kick off reverse geocoding in the background ──
   geocodeMissingStations();
@@ -932,31 +939,60 @@ const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
 // Structure: { [station_id]: { '87': price, '90': price, 'diesel': price, counts: {...} } }
 let communityPrices = {};
 
-// Fetch all community-reported prices from Supabase (latest per station+fuel)
+// Fetch all community-reported prices from Supabase
+// Tries the `latest_prices` view first; falls back to raw `price_reports` table
+// if the view doesn't exist yet (common when Supabase migration hasn't run).
 async function fetchCommunityPrices() {
-  try {
-    const res = await fetch(
-      `${SUPABASE_URL}/rest/v1/latest_prices?select=station_id,fuel_type,price`,
-      {
-        headers: {
-          'apikey':        SUPABASE_KEY,
-          'Authorization': `Bearer ${SUPABASE_KEY}`,
-        },
-        signal: AbortSignal.timeout(8000),
-      }
-    );
-    if (!res.ok) throw new Error('Supabase HTTP ' + res.status);
-    const rows = await res.json();
-    // Build lookup: communityPrices[station_id][fuel_type] = price
+  const headers = {
+    'apikey':        SUPABASE_KEY,
+    'Authorization': `Bearer ${SUPABASE_KEY}`,
+  };
+
+  // Helper to build the communityPrices lookup from an array of rows
+  function buildLookup(rows) {
     communityPrices = {};
     for (const row of rows) {
       if (!communityPrices[row.station_id]) communityPrices[row.station_id] = {};
-      communityPrices[row.station_id][row.fuel_type] = row.price;
+      // For price_reports table rows: keep only the latest per station+fuel
+      if (!communityPrices[row.station_id][row.fuel_type] ||
+           row.reported_at > (communityPrices[row.station_id][row.fuel_type + '_at'] || '')) {
+        communityPrices[row.station_id][row.fuel_type] = parseFloat(row.price);
+        communityPrices[row.station_id][row.fuel_type + '_at'] = row.reported_at;
+      }
     }
-    console.log(`[PetrolJA] Loaded ${rows.length} community price reports`);
-  } catch (err) {
-    console.warn('[PetrolJA] Could not load community prices:', err.message);
+    console.log(`[PetrolJA] Community prices loaded: ${Object.keys(communityPrices).length} stations`);
   }
+
+  // Attempt 1: latest_prices view (fast, deduplicated)
+  try {
+    const res = await fetch(
+      `${SUPABASE_URL}/rest/v1/latest_prices?select=station_id,fuel_type,price`,
+      { headers, signal: AbortSignal.timeout(6000) }
+    );
+    if (res.ok) {
+      const rows = await res.json();
+      if (Array.isArray(rows)) { buildLookup(rows); return; }
+    }
+    console.warn('[PetrolJA] latest_prices view unavailable, trying price_reports fallback');
+  } catch (e) {
+    console.warn('[PetrolJA] latest_prices fetch failed:', e.message);
+  }
+
+  // Attempt 2: query price_reports table directly, order by reported_at desc
+  // so buildLookup naturally keeps the most recent per station+fuel
+  try {
+    const res = await fetch(
+      `${SUPABASE_URL}/rest/v1/price_reports?select=station_id,fuel_type,price,reported_at&order=reported_at.desc&limit=500`,
+      { headers, signal: AbortSignal.timeout(6000) }
+    );
+    if (res.ok) {
+      const rows = await res.json();
+      if (Array.isArray(rows)) { buildLookup(rows); return; }
+    }
+  } catch (e) {
+    console.warn('[PetrolJA] price_reports fallback failed:', e.message);
+  }
+  // Both failed — communityPrices stays empty, app shows PCJ prices (still useful)
 }
 
 // Submit a price report to Supabase
