@@ -185,6 +185,7 @@ body.light {
   left: 0; right: 0;
   bottom: 0;
   z-index: 200;
+  height: 100vh;          /* MUST be 100vh — translateY math depends on this */
   background: var(--panel);
   border-radius: 20px 20px 0 0;
   border-top: 1px solid var(--line2);
@@ -192,8 +193,6 @@ body.light {
   transition: transform 0.35s cubic-bezier(0.32, 0.72, 0, 1);
   will-change: transform;
   display: flex; flex-direction: column;
-  /* height is set by JS snap points */
-  max-height: 92vh;
 }
 
 .sheet-handle-area {
@@ -245,12 +244,16 @@ input[type=range]::-webkit-slider-thumb {
 }
 #rvLabel { font-family: 'Geist Mono', monospace; font-weight: 700; font-size: 0.85rem; color: var(--txt); min-width: 40px; text-align: right; }
 
-/* Station list — always fills remaining space and scrolls */
+/* Station list — always fills remaining sheet height and scrolls */
 .slist {
-  flex: 1; min-height: 0;
-  overflow-y: auto; overflow-x: hidden;
-  padding: 10px 12px calc(16px + env(safe-area-inset-bottom, 0px));
-  display: flex; flex-direction: column; gap: 6px;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 10px 12px calc(24px + env(safe-area-inset-bottom, 0px));
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
 }
@@ -624,9 +627,9 @@ let SNAP_PEEK, SNAP_HALF, SNAP_FULL;
 
 function calcSnaps() {
   const h = window.innerHeight;
-  SNAP_FULL = h * 0.08;    // 92% of screen height
-  SNAP_HALF = h * 0.45;    // 55% of screen height
-  SNAP_PEEK = h * 0.82;    // just the header peeking
+  SNAP_FULL = h * 0.08;    // sheet top at 8% → 92% of screen visible
+  SNAP_HALF = h * 0.50;    // sheet top at 50% → half screen visible
+  SNAP_PEEK = h - 90;      // always show exactly 90px (handle + title bar) — never off screen
 }
 calcSnaps();
 
@@ -756,12 +759,11 @@ handle.addEventListener('touchend', e => {
   snapTo(target);
 });
 
-// Tap handle to toggle between peek and half
+// Tap handle to toggle between peek and full
 handle.addEventListener('click', e => {
   if (Math.abs(getTranslate() - dragStartTranslate) > 10) return; // was a drag
-  if (currentSnap === SNAP_PEEK || currentSnap === null) snapTo(SNAP_HALF);
-  else if (currentSnap === SNAP_HALF) snapTo(SNAP_FULL);
-  else snapTo(SNAP_PEEK);
+  if (currentSnap >= SNAP_HALF) snapTo(SNAP_FULL);  // peeking or half → go full
+  else snapTo(SNAP_PEEK);                            // full → peek
 });
 
 // Init sheet position
