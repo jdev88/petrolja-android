@@ -43,48 +43,9 @@ html, body {
   --white:  #fff;
   --green:  #4ade80;
   --red:    #f87171;
-  --pill-bg:     rgba(20,20,20,0.9);
-  --topbar-from: rgba(12,12,12,0.95);
-  --topbar-to:   rgba(12,12,12,0);
-  --popup-bg:    rgba(16,16,16,0.97);
-  --popup-bdr:   #383838;
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bot: env(safe-area-inset-bottom, 0px);
 }
-
-/* ── Light mode overrides ── */
-body.light {
-  --bg:     #f4f3ef;
-  --panel:  #ffffff;
-  --raised: #eceae4;
-  --hover:  #e4e2dc;
-  --line:   #dddbd4;
-  --line2:  #ccc9c0;
-  --txt:    #1a1a1a;
-  --sub:    #666;
-  --dim:    #aaa;
-  --white:  #1a1a1a;
-  --green:  #16a34a;
-  --red:    #dc2626;
-  --pill-bg:     rgba(236,234,228,0.95);
-  --topbar-from: rgba(244,243,239,0.96);
-  --topbar-to:   rgba(244,243,239,0);
-  --popup-bg:    rgba(255,255,255,0.97);
-  --popup-bdr:   #ccc9c0;
-  background: #f4f3ef;
-  color: #1a1a1a;
-}
-
-/* ── Theme toggle button ── */
-.theme-btn {
-  display: flex; align-items: center; justify-content: center;
-  width: 36px; height: 36px; border-radius: 50%; flex-shrink: 0;
-  background: var(--pill-bg); border: 1px solid var(--line2);
-  color: var(--txt); cursor: pointer;
-  backdrop-filter: blur(12px);
-  transition: transform 0.15s;
-}
-.theme-btn:active { transform: scale(0.88); }
 
 /* ── Map fills entire screen ── */
 #map {
@@ -93,9 +54,9 @@ body.light {
   z-index: 1;
 }
 .leaflet-popup-content-wrapper {
-  background: var(--popup-bg) !important;
-  border: 1px solid var(--popup-bdr) !important; border-radius: 12px !important;
-  color: var(--txt) !important; box-shadow: 0 16px 40px rgba(0,0,0,0.2) !important;
+  background: rgba(16,16,16,0.97) !important;
+  border: 1px solid #383838 !important; border-radius: 12px !important;
+  color: var(--txt) !important; box-shadow: 0 16px 40px rgba(0,0,0,0.7) !important;
 }
 .leaflet-popup-tip-container { display: none !important; }
 .leaflet-popup-content { margin: 14px 16px !important; min-width: 180px; }
@@ -113,7 +74,7 @@ body.light {
   z-index: 100;
   padding: calc(var(--safe-top) + 10px) 14px 10px;
   display: flex; align-items: center; gap: 10px;
-  background: linear-gradient(to bottom, var(--topbar-from) 0%, var(--topbar-to) 100%);
+  background: linear-gradient(to bottom, rgba(12,12,12,0.95) 0%, rgba(12,12,12,0) 100%);
   pointer-events: none;
 }
 .topbar > * { pointer-events: all; }
@@ -121,15 +82,15 @@ body.light {
 .logo {
   font-family: 'Geist Mono', monospace; font-weight: 700; font-size: 1rem;
   letter-spacing: 0.5px; display: flex; align-items: center; gap: 7px;
-  background: var(--pill-bg); border: 1px solid var(--line2);
+  background: rgba(12,12,12,0.85); border: 1px solid var(--line2);
   padding: 7px 12px; border-radius: 24px;
-  backdrop-filter: blur(12px); color: var(--txt);
+  backdrop-filter: blur(12px);
 }
-.logo-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--txt); flex-shrink: 0; }
+.logo-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--white); flex-shrink: 0; }
 
 .fuel-group {
   display: flex; gap: 2px;
-  background: var(--pill-bg); border: 1px solid var(--line2);
+  background: rgba(20,20,20,0.9); border: 1px solid var(--line2);
   border-radius: 24px; padding: 3px;
   backdrop-filter: blur(12px);
 }
@@ -479,11 +440,6 @@ select:focus, input:focus { border-color: var(--txt); }
     <button class="fpill" data-f="90">90</button>
     <button class="fpill" data-f="diesel">Diesel</button>
   </div>
-  <button class="theme-btn" id="themeBtn" title="Toggle light/dark mode">
-    <svg id="themeIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-      <circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
-    </svg>
-  </button>
 </div>
 
 <!-- FAB -->
@@ -631,43 +587,9 @@ let currentSnap = null; // set after first load
 // ── Map ───────────────────────────────────────────────────────────────────────
 const map = L.map('map', { zoomControl: false, attributionControl: false })
   .setView([18.1, -77.3], 9);
-
-const TILES = {
-  dark:  'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-  light: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
-};
-
-// isDark is used throughout renderList for pin colours — must be declared here
-let isDark = localStorage.getItem('petrolja_theme') !== 'light';
-let tileLayer = L.tileLayer(isDark ? TILES.dark : TILES.light, {
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
   subdomains: 'abcd', maxZoom: 19
 }).addTo(map);
-
-function applyTheme(dark) {
-  if (dark) {
-    document.body.classList.remove('light');
-    document.getElementById('themeIcon').innerHTML =
-      '<circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>';
-  } else {
-    document.body.classList.add('light');
-    document.getElementById('themeIcon').innerHTML =
-      '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>';
-  }
-}
-
-// Apply saved preference on load
-applyTheme(isDark);
-
-document.getElementById('themeBtn').addEventListener('click', () => {
-  isDark = !isDark;
-  localStorage.setItem('petrolja_theme', isDark ? 'dark' : 'light');
-  map.removeLayer(tileLayer);
-  tileLayer = L.tileLayer(isDark ? TILES.dark : TILES.light, {
-    subdomains: 'abcd', maxZoom: 19
-  }).addTo(map);
-  applyTheme(isDark);
-  if (stations.length) renderList();
-});
 
 let uCircle = null, uPin = null;
 function drawUser() {
