@@ -29,20 +29,20 @@ html, body {
   -webkit-overflow-scrolling: touch;
 }
 
-/* ── Tokens — Dark mode (default) ── */
+/* ── Tokens ── */
 :root {
-  --bg:          #0c0c0c;
-  --panel:       #161616;
-  --raised:      #202020;
-  --hover:       #282828;
-  --line:        #2e2e2e;
-  --line2:       #3a3a3a;
-  --txt:         #e0e0e0;
-  --sub:         #777;
-  --dim:         #444;
-  --white:       #fff;
-  --green:       #4ade80;
-  --red:         #f87171;
+  --bg:     #0c0c0c;
+  --panel:  #161616;
+  --raised: #202020;
+  --hover:  #282828;
+  --line:   #2e2e2e;
+  --line2:  #3a3a3a;
+  --txt:    #e0e0e0;
+  --sub:    #777;
+  --dim:    #444;
+  --white:  #fff;
+  --green:  #4ade80;
+  --red:    #f87171;
   --pill-bg:     rgba(20,20,20,0.9);
   --topbar-from: rgba(12,12,12,0.95);
   --topbar-to:   rgba(12,12,12,0);
@@ -54,26 +54,37 @@ html, body {
 
 /* ── Light mode overrides ── */
 body.light {
-  --bg:          #f4f3ef;
-  --panel:       #ffffff;
-  --raised:      #eceae4;
-  --hover:       #e4e2dc;
-  --line:        #dddbd4;
-  --line2:       #ccc9c0;
-  --txt:         #1a1a1a;
-  --sub:         #666;
-  --dim:         #aaa;
-  --white:       #1a1a1a;
-  --green:       #16a34a;
-  --red:         #dc2626;
+  --bg:     #f4f3ef;
+  --panel:  #ffffff;
+  --raised: #eceae4;
+  --hover:  #e4e2dc;
+  --line:   #dddbd4;
+  --line2:  #ccc9c0;
+  --txt:    #1a1a1a;
+  --sub:    #666;
+  --dim:    #aaa;
+  --white:  #1a1a1a;
+  --green:  #16a34a;
+  --red:    #dc2626;
   --pill-bg:     rgba(236,234,228,0.95);
-  --topbar-from: rgba(244,243,239,0.95);
+  --topbar-from: rgba(244,243,239,0.96);
   --topbar-to:   rgba(244,243,239,0);
   --popup-bg:    rgba(255,255,255,0.97);
   --popup-bdr:   #ccc9c0;
   background: #f4f3ef;
   color: #1a1a1a;
 }
+
+/* ── Theme toggle button ── */
+.theme-btn {
+  display: flex; align-items: center; justify-content: center;
+  width: 36px; height: 36px; border-radius: 50%; flex-shrink: 0;
+  background: var(--pill-bg); border: 1px solid var(--line2);
+  color: var(--txt); cursor: pointer;
+  backdrop-filter: blur(12px);
+  transition: transform 0.15s;
+}
+.theme-btn:active { transform: scale(0.88); }
 
 /* ── Map fills entire screen ── */
 #map {
@@ -90,9 +101,9 @@ body.light {
 .leaflet-popup-content { margin: 14px 16px !important; min-width: 180px; }
 .leaflet-control-attribution { display: none !important; }
 .leaflet-control-zoom { display: none !important; }
-.pu-name { font-weight: 800; font-size: 0.9rem; color: var(--txt); margin-bottom: 3px; }
+.pu-name { font-weight: 800; font-size: 0.9rem; color: var(--white); margin-bottom: 3px; }
 .pu-addr { font-size: 0.72rem; color: var(--sub); margin-bottom: 8px; line-height: 1.4; }
-.pu-price { font-family: 'Geist Mono', monospace; font-weight: 700; font-size: 1.1rem; color: var(--txt); }
+.pu-price { font-family: 'Geist Mono', monospace; font-weight: 700; font-size: 1.1rem; color: var(--white); }
 .pu-row { display: flex; justify-content: space-between; align-items: center; margin-top: 4px; }
 .pu-src, .pu-dist { font-size: 0.65rem; color: var(--sub); }
 
@@ -106,17 +117,6 @@ body.light {
   pointer-events: none;
 }
 .topbar > * { pointer-events: all; }
-
-/* ── Theme toggle button ── */
-.theme-btn {
-  display: flex; align-items: center; justify-content: center;
-  width: 36px; height: 36px; border-radius: 50%; flex-shrink: 0;
-  background: var(--pill-bg); border: 1px solid var(--line2);
-  color: var(--txt); cursor: pointer;
-  backdrop-filter: blur(12px);
-  transition: transform 0.15s;
-}
-.theme-btn:active { transform: scale(0.88); }
 
 .logo {
   font-family: 'Geist Mono', monospace; font-weight: 700; font-size: 1rem;
@@ -166,10 +166,10 @@ body.light {
   padding: 0;
   border-radius: 50%;
   justify-content: center;
-  font-size: 0;
+  font-size: 0; /* hide text */
   gap: 0;
-  background: var(--pill-bg);
-  color: var(--txt);
+  background: rgba(20,20,20,0.9);
+  color: var(--white);
   border: 1px solid var(--line2);
   box-shadow: none;
   backdrop-filter: blur(12px);
@@ -215,7 +215,7 @@ body.light {
   padding: 0 16px 10px;
   flex-shrink: 0;
 }
-.sheet-title { font-weight: 800; font-size: 1.05rem; color: var(--txt); }
+.sheet-title { font-weight: 800; font-size: 1.05rem; color: var(--white); }
 .sheet-sub { font-size: 0.7rem; color: var(--sub); }
 
 /* PCJ strip */
@@ -637,7 +637,7 @@ const TILES = {
   light: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
 };
 
-// Load saved preference — default dark
+// isDark is used throughout renderList for pin colours — must be declared here
 let isDark = localStorage.getItem('petrolja_theme') !== 'light';
 let tileLayer = L.tileLayer(isDark ? TILES.dark : TILES.light, {
   subdomains: 'abcd', maxZoom: 19
@@ -655,19 +655,17 @@ function applyTheme(dark) {
   }
 }
 
-// Apply saved theme on load
+// Apply saved preference on load
 applyTheme(isDark);
 
 document.getElementById('themeBtn').addEventListener('click', () => {
   isDark = !isDark;
   localStorage.setItem('petrolja_theme', isDark ? 'dark' : 'light');
-  // Swap map tiles
   map.removeLayer(tileLayer);
   tileLayer = L.tileLayer(isDark ? TILES.dark : TILES.light, {
     subdomains: 'abcd', maxZoom: 19
   }).addTo(map);
   applyTheme(isDark);
-  // Re-render markers so pin colours adapt to new theme
   if (stations.length) renderList();
 });
 
@@ -848,7 +846,7 @@ async function locate() {
     userLng = longitude;
     map.flyTo([userLat, userLng], 14, { duration: 1.2 });
     drawUser();
-    await loadStations();
+    loadStations();
   } catch (err) {
     fab.disabled = false;
     fab.classList.remove('loading');
