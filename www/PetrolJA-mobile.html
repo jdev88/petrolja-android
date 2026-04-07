@@ -29,20 +29,20 @@ html, body {
   -webkit-overflow-scrolling: touch;
 }
 
-/* ── Tokens ── */
+/* ── Tokens — Dark mode (default) ── */
 :root {
-  --bg:     #0c0c0c;
-  --panel:  #161616;
-  --raised: #202020;
-  --hover:  #282828;
-  --line:   #2e2e2e;
-  --line2:  #3a3a3a;
-  --txt:    #e0e0e0;
-  --sub:    #777;
-  --dim:    #444;
-  --white:  #fff;
-  --green:  #4ade80;
-  --red:    #f87171;
+  --bg:          #0c0c0c;
+  --panel:       #161616;
+  --raised:      #202020;
+  --hover:       #282828;
+  --line:        #2e2e2e;
+  --line2:       #3a3a3a;
+  --txt:         #e0e0e0;
+  --sub:         #777;
+  --dim:         #444;
+  --white:       #fff;
+  --green:       #4ade80;
+  --red:         #f87171;
   --pill-bg:     rgba(20,20,20,0.9);
   --topbar-from: rgba(12,12,12,0.95);
   --topbar-to:   rgba(12,12,12,0);
@@ -54,37 +54,26 @@ html, body {
 
 /* ── Light mode overrides ── */
 body.light {
-  --bg:     #f4f3ef;
-  --panel:  #ffffff;
-  --raised: #eceae4;
-  --hover:  #e4e2dc;
-  --line:   #dddbd4;
-  --line2:  #ccc9c0;
-  --txt:    #1a1a1a;
-  --sub:    #666;
-  --dim:    #aaa;
-  --white:  #1a1a1a;
-  --green:  #16a34a;
-  --red:    #dc2626;
+  --bg:          #f4f3ef;
+  --panel:       #ffffff;
+  --raised:      #eceae4;
+  --hover:       #e4e2dc;
+  --line:        #dddbd4;
+  --line2:       #ccc9c0;
+  --txt:         #1a1a1a;
+  --sub:         #666;
+  --dim:         #aaa;
+  --white:       #1a1a1a;
+  --green:       #16a34a;
+  --red:         #dc2626;
   --pill-bg:     rgba(236,234,228,0.95);
-  --topbar-from: rgba(244,243,239,0.96);
+  --topbar-from: rgba(244,243,239,0.95);
   --topbar-to:   rgba(244,243,239,0);
   --popup-bg:    rgba(255,255,255,0.97);
   --popup-bdr:   #ccc9c0;
   background: #f4f3ef;
   color: #1a1a1a;
 }
-
-/* ── Theme toggle button ── */
-.theme-btn {
-  display: flex; align-items: center; justify-content: center;
-  width: 36px; height: 36px; border-radius: 50%; flex-shrink: 0;
-  background: var(--pill-bg); border: 1px solid var(--line2);
-  color: var(--txt); cursor: pointer;
-  backdrop-filter: blur(12px);
-  transition: transform 0.15s;
-}
-.theme-btn:active { transform: scale(0.88); }
 
 /* ── Map fills entire screen ── */
 #map {
@@ -101,9 +90,9 @@ body.light {
 .leaflet-popup-content { margin: 14px 16px !important; min-width: 180px; }
 .leaflet-control-attribution { display: none !important; }
 .leaflet-control-zoom { display: none !important; }
-.pu-name { font-weight: 800; font-size: 0.9rem; color: var(--white); margin-bottom: 3px; }
+.pu-name { font-weight: 800; font-size: 0.9rem; color: var(--txt); margin-bottom: 3px; }
 .pu-addr { font-size: 0.72rem; color: var(--sub); margin-bottom: 8px; line-height: 1.4; }
-.pu-price { font-family: 'Geist Mono', monospace; font-weight: 700; font-size: 1.1rem; color: var(--white); }
+.pu-price { font-family: 'Geist Mono', monospace; font-weight: 700; font-size: 1.1rem; color: var(--txt); }
 .pu-row { display: flex; justify-content: space-between; align-items: center; margin-top: 4px; }
 .pu-src, .pu-dist { font-size: 0.65rem; color: var(--sub); }
 
@@ -117,6 +106,17 @@ body.light {
   pointer-events: none;
 }
 .topbar > * { pointer-events: all; }
+
+/* ── Theme toggle button ── */
+.theme-btn {
+  display: flex; align-items: center; justify-content: center;
+  width: 36px; height: 36px; border-radius: 50%; flex-shrink: 0;
+  background: var(--pill-bg); border: 1px solid var(--line2);
+  color: var(--txt); cursor: pointer;
+  backdrop-filter: blur(12px);
+  transition: transform 0.15s;
+}
+.theme-btn:active { transform: scale(0.88); }
 
 .logo {
   font-family: 'Geist Mono', monospace; font-weight: 700; font-size: 1rem;
@@ -174,7 +174,7 @@ body.light {
   box-shadow: none;
   backdrop-filter: blur(12px);
 }
-.fab.compact svg { color: var(--txt); }
+.fab.compact svg { color: var(--white); }
 .fab:active { transform: scale(0.94); }
 .fab:disabled { opacity: 0.4; }
 .fab.loading svg { animation: spin 1s linear infinite; }
@@ -215,7 +215,7 @@ body.light {
   padding: 0 16px 10px;
   flex-shrink: 0;
 }
-.sheet-title { font-weight: 800; font-size: 1.05rem; color: var(--white); }
+.sheet-title { font-weight: 800; font-size: 1.05rem; color: var(--txt); }
 .sheet-sub { font-size: 0.7rem; color: var(--sub); }
 
 /* PCJ strip */
@@ -637,7 +637,7 @@ const TILES = {
   light: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
 };
 
-// isDark is used throughout renderList for pin colours — must be declared here
+// Load saved preference — default dark
 let isDark = localStorage.getItem('petrolja_theme') !== 'light';
 let tileLayer = L.tileLayer(isDark ? TILES.dark : TILES.light, {
   subdomains: 'abcd', maxZoom: 19
@@ -655,17 +655,19 @@ function applyTheme(dark) {
   }
 }
 
-// Apply saved preference on load
+// Apply saved theme on load
 applyTheme(isDark);
 
 document.getElementById('themeBtn').addEventListener('click', () => {
   isDark = !isDark;
   localStorage.setItem('petrolja_theme', isDark ? 'dark' : 'light');
+  // Swap map tiles
   map.removeLayer(tileLayer);
   tileLayer = L.tileLayer(isDark ? TILES.dark : TILES.light, {
     subdomains: 'abcd', maxZoom: 19
   }).addTo(map);
   applyTheme(isDark);
+  // Re-render markers so pin colours adapt to new theme
   if (stations.length) renderList();
 });
 
@@ -846,7 +848,7 @@ async function locate() {
     userLng = longitude;
     map.flyTo([userLat, userLng], 14, { duration: 1.2 });
     drawUser();
-    loadStations();
+    await loadStations();
   } catch (err) {
     fab.disabled = false;
     fab.classList.remove('loading');
@@ -944,31 +946,20 @@ async function geocodeMissingStations() {
 // ── Load stations ─────────────────────────────────────────────────────────────
 async function loadStations() {
   setEmpty('🔄', 'Fetching stations…', 'Searching nearby…');
-
-  // Nodes-only query is faster than including ways — gas stations are almost
-  // always mapped as nodes. Timeout 15s matches our per-request abort below.
-  const q = `[out:json][timeout:15];(node["amenity"="fuel"](around:${searchRadius},${userLat},${userLng}););out;`;
-
+  const q = `[out:json][timeout:30];(node["amenity"="fuel"](around:${searchRadius},${userLat},${userLng});way["amenity"="fuel"](around:${searchRadius},${userLat},${userLng}););out center;`;
   const mirrors = [
     'https://overpass-api.de/api/interpreter',
     'https://overpass.kumi.systems/api/interpreter',
-    'https://overpass.openstreetmap.ru/api/interpreter',
+    'https://overpass.openstreetmap.ru/api/interpreter'
   ];
-
-  // Race all 3 mirrors simultaneously — use whichever responds first.
-  // Each has a 12-second individual timeout so a slow mirror never blocks.
   let elements = null;
-  try {
-    const result = await Promise.any(
-      mirrors.map(url =>
-        fetch(url, { method: 'POST', body: q, signal: AbortSignal.timeout(12000) })
-          .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
-          .then(j => { if (!j.elements?.length && j.elements !== undefined) throw new Error('empty'); return j.elements; })
-      )
-    );
-    elements = result;
-  } catch {
-    elements = null; // all mirrors failed
+  for (const url of mirrors) {
+    try {
+      const r = await fetch(url, { method: 'POST', body: q });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      elements = (await r.json()).elements || [];
+      break;
+    } catch {}
   }
 
   const fab = document.getElementById('fab');
@@ -1191,7 +1182,7 @@ function renderList() {
     const dirUrl = `https://www.google.com/maps/dir/?api=1&origin=${userLat},${userLng}&destination=${s.lat},${s.lng}&travelmode=driving`;
 
     const rptStyle = !anyReported
-      ? `style="background:var(--txt);color:var(--bg);border-color:var(--txt);"`
+      ? `style="background:var(--white);color:#000;border-color:var(--white);"`
       : ``;
 
     // ── Brand avatar colour — deterministic from brand name ──
